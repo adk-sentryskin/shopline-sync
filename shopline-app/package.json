@@ -1,0 +1,23 @@
+{
+  "name": "shopline-app",
+  "version": "1.0.0",
+  "license": "UNLICENSED",
+  "scripts": {
+    "shopline": "shopline",
+    "build": "shopline app build",
+    "dev": "shopline app dev",
+    "dev:reset": "shopline app dev --reset"
+  },
+  "dependencies": {},
+  "author": "dhanushkumar",
+  "devDependencies": {
+    "@shoplinedev/app": "next",
+    "@shoplinedev/cli": "next"
+  },
+  "private": true,
+  "workspaces": [
+    "extensions/*",
+    "web",
+    "app"
+  ]
+}

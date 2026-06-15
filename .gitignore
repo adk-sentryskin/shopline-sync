@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Environments
+.env
+.venv/
+venv/
+env/
+
+# Secrets / service accounts — never commit
+*.json
+!package.json
+!package-lock.json
+*-service-account*.json
+
+# OS
+.DS_Store

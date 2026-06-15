@@ -1,0 +1,29 @@
+{
+  "name": "shopline-frontend-template-react",
+  "author": "SHOPLINE",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@shoplinedev/appbridge": "^1.0.2",
+    "@formatjs/intl-localematcher": "^0.5.4",
+    "i18next": "^23",
+    "react": "^18",
+    "react-dom": "^18",
+    "react-i18next": "^14",
+    "i18next-resources-to-backend": "^1",
+    "react-router-dom": "^6"
+  },
+  "devDependencies": {
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5",
+    "vite": "^5"
+  }
+}
