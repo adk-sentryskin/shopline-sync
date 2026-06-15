@@ -35,6 +35,11 @@ if [ "$ENVIRONMENT" = "development" ]; then
     SHOPLINE_API_SECRET_SECRET="SHOPLINE_API_SECRET"
     SHOPLINE_WEBHOOK_SECRET_SECRET="SHOPLINE_WEBHOOK_SECRET"
     OAUTH_REDIRECT_URL_SECRET="SHOPLINE_OAUTH_REDIRECT_URL"
+    # Where /api/oauth/callback redirects the browser after a successful connect
+    # (the chekoutai builder's AI Persona page reads ?status/merchant_id/shop_handle).
+    # Production-forward: a single shopline-sync backend serves both frontend envs,
+    # so we always land on the prod builder (app.chekout.ai) for now.
+    FRONTEND_RETURN_URL="https://app.chekout.ai/ai-agent"
 else  # production
     SERVICE_NAME="shopline-sync"
     MEMORY="1Gi"; CPU="2"; MIN_INSTANCES="1"; MAX_INSTANCES="100"
@@ -45,6 +50,7 @@ else  # production
     SHOPLINE_API_SECRET_SECRET="SHOPLINE_API_SECRET_PROD"
     SHOPLINE_WEBHOOK_SECRET_SECRET="SHOPLINE_WEBHOOK_SECRET_PROD"
     OAUTH_REDIRECT_URL_SECRET="SHOPLINE_OAUTH_REDIRECT_URL_PROD"
+    FRONTEND_RETURN_URL="https://app.chekout.ai/ai-agent"
 fi
 
 IMAGE_NAME="gcr.io/${PROJECT_ID}/shopline-sync"
@@ -85,6 +91,7 @@ RECONCILIATION_MINUTE: "${RECONCILIATION_MINUTE:-0}"
 GCP_PROJECT_ID: "${PROJECT_ID}"
 GCP_REGION: "${REGION}"
 ENABLE_EMBEDDINGS: "${ENABLE_EMBEDDINGS:-true}"
+SHOPLINE_FRONTEND_RETURN_URL: "${FRONTEND_RETURN_URL}"
 EOF
 
 SECRETS="DB_DSN=${DB_DSN_SECRET}:latest"
