@@ -30,7 +30,12 @@ if [ "$ENVIRONMENT" = "development" ]; then
     MEMORY="512Mi"; CPU="1"; MIN_INSTANCES="0"; MAX_INSTANCES="10"
     LOG_LEVEL="INFO"; DEBUG="false"; CONCURRENCY=""
     DB_DSN_SECRET="DB_DSN"
-    API_KEY_SECRET="API_KEY"
+    # Production-forward: the single shopline-sync backend authenticates the prod
+    # frontend (app.chekout.ai). That frontend sends production-aibuilder's
+    # API_KEY_PROD value, which differs from this project's API_KEY / API_KEY_PROD.
+    # SHOPLINE_SYNC_API_KEY (shopify-473015) holds a copy of that exact value, so the
+    # keys match without overwriting any shared secret.
+    API_KEY_SECRET="SHOPLINE_SYNC_API_KEY"
     SHOPLINE_API_KEY_SECRET="SHOPLINE_API_KEY"
     SHOPLINE_API_SECRET_SECRET="SHOPLINE_API_SECRET"
     SHOPLINE_WEBHOOK_SECRET_SECRET="SHOPLINE_WEBHOOK_SECRET"
