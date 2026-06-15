@@ -8,7 +8,7 @@ GET  /api/oauth/callback (public — SHOPLINE redirects the browser here) ->
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -78,8 +78,24 @@ def _callback_finish(success: bool, status_code: int = 200, **params):
     return JSONResponse(status_code=status_code, content=params)
 
 
+def _register_webhooks_bg(merchant_id: str) -> None:
+    """Best-effort webhook registration after connect (own DB session, detached)."""
+    from app.database import SessionLocal
+    from app.services.webhook_manager import register_webhooks
+    db = SessionLocal()
+    try:
+        store = db.query(ShoplineStore).filter(ShoplineStore.merchant_id == merchant_id).first()
+        if store and store.access_token:
+            register_webhooks(db, store)
+    except Exception as e:
+        logger.warning("Webhook registration after connect failed for %s: %s", merchant_id, e)
+    finally:
+        db.close()
+
+
 @router.get("/callback")
 async def oauth_callback(
+    background_tasks: BackgroundTasks,
     code: str = Query(..., description="Authorization code from SHOPLINE"),
     customField: Optional[str] = Query(None, description="Signed state token"),
     db: Session = Depends(get_db),
@@ -119,5 +135,8 @@ async def oauth_callback(
 
     db.commit()
     logger.info("SHOPLINE store connected: merchant=%s handle=%s", merchant_id, handle)
+
+    # Register webhooks in the background so the redirect isn't delayed.
+    background_tasks.add_task(_register_webhooks_bg, merchant_id)
 
     return _callback_finish(True, 200, status="connected", merchant_id=merchant_id, shop_handle=handle)

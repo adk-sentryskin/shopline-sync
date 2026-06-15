@@ -30,6 +30,26 @@ async def store_info(store: ShoplineStore = Depends(get_merchant_from_header)):
     }
 
 
+@router.post("/post-probe")
+async def post_probe(
+    payload: dict,
+    path: str = Query(..., description="Admin API path, e.g. /webhooks.json"),
+    store: ShoplineStore = Depends(get_merchant_from_header),
+):
+    """POST an arbitrary body to a SHOPLINE Admin API path; return status + body
+    (so we can discover the right request shape). Diagnostic — remove later."""
+    client = ShoplineClient(store.shop_handle, store.access_token)
+    try:
+        resp = client.post(path, payload)
+        return {"path": path, "ok": True, "response": json.dumps(resp)[:1000]}
+    except httpx.HTTPStatusError as e:
+        return {"path": path, "ok": False, "status": e.response.status_code, "body": e.response.text[:600]}
+    except Exception as e:
+        return {"path": path, "ok": False, "error": str(e)}
+    finally:
+        client.close()
+
+
 @router.get("/probe")
 async def probe(
     path: str = Query(..., description="Admin API path relative to /admin/openapi/{version}, e.g. /pages.json"),

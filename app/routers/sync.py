@@ -99,3 +99,13 @@ async def sync_content(
     """Blog articles -> embed -> upsert into shopline_documents (doc_type=blog_article)."""
     from app.services.content_sync import full_sync
     return full_sync(db, store)
+
+
+@router.post("/webhooks/register")
+async def register_store_webhooks(
+    store: ShoplineStore = Depends(get_merchant_from_header),
+    db: Session = Depends(get_db),
+):
+    """(Re)register SHOPLINE webhook subscriptions for this store."""
+    from app.services.webhook_manager import register_webhooks
+    return register_webhooks(db, store)

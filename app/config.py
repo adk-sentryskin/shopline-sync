@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     SHOPLINE_API_KEY: str            # client id
     SHOPLINE_API_SECRET: str         # client secret
     SHOPLINE_WEBHOOK_SECRET: str     # HMAC signing secret (often == app secret; confirm)
+    # ⚠️ When False, webhook HMAC failures are logged but NOT rejected — used to
+    # CAPTURE the first real webhook (learn headers + confirm the secret).
+    # MUST be True before production.
+    WEBHOOK_VERIFY_STRICT: bool = False
     # Admin API version (path segment). v20260601 confirmed current (2026-06-11).
     SHOPLINE_API_VERSION: str = "v20260601"
     SHOPLINE_SCOPES: str = "read_products,read_orders,read_content,read_page,read_shop_policy"

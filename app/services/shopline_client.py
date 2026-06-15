@@ -44,6 +44,11 @@ class ShoplineClient:
         resp.raise_for_status()
         return resp.json()
 
+    def post(self, path: str, json_body: Optional[dict] = None) -> dict:
+        resp = self._client.post(f"{self.base_url}{path}", headers=self._headers(), json=json_body)
+        resp.raise_for_status()
+        return resp.json()
+
     def list_products(self, **params) -> dict:
         """GET the product list. params may include limit / page / since_id etc."""
         return self.get("/products/products.json", params=params or None)
