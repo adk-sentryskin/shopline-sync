@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.config import settings
 from app.database import init_db
-from app.routers import oauth, webhooks, sync, diagnostics
+from app.routers import oauth, webhooks, sync, diagnostics, orders
 import logging
 import secrets
 
@@ -94,6 +94,7 @@ app.include_router(oauth.router)
 app.include_router(webhooks.router)
 app.include_router(sync.router)
 app.include_router(diagnostics.router)
+app.include_router(orders.router)
 
 
 @app.get("/")

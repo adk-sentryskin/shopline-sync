@@ -17,10 +17,12 @@ logger = logging.getLogger(__name__)
 
 
 def parse_shopline_order(raw: dict) -> dict:
-    """Normalize a raw SHOPLINE order. Field names are defensive — the live
-    response shape is confirmed at first real order (dev store may have none)."""
-    order_number = raw.get("order_number") or raw.get("name") or raw.get("id")
-    total = raw.get("total_price") or raw.get("totalPrice")
+    """Normalize a raw SHOPLINE order. Field names per the Admin REST order
+    schema (GET /admin/openapi/<version>/orders.json): the order total lives in
+    `current_total_price`; `name` is the human order number. Older fallbacks kept
+    for resilience to shape drift."""
+    order_number = raw.get("name") or raw.get("order_number") or raw.get("id")
+    total = raw.get("current_total_price") or raw.get("total_price") or raw.get("totalPrice")
     currency = raw.get("currency") or raw.get("currency_code")
     fin_status = raw.get("financial_status") or raw.get("financialStatus")
     return {
