@@ -58,8 +58,12 @@ def upsert_order(db: Session, store: ShoplineStore, raw: dict) -> None:
     db.commit()
 
 
-def full_sync(db: Session, store: ShoplineStore, page_limit: int = 200, max_pages: int = 100) -> Dict:
-    """Fetch all orders (paginated) and upsert them."""
+def full_sync(db: Session, store: ShoplineStore, page_limit: int = 100, max_pages: int = 100) -> Dict:
+    """Fetch all orders (paginated) and upsert them.
+
+    SHOPLINE's orders.json caps `limit` at 100 (a higher value 422s with
+    "limit: the query result max size is 100"), so page_limit must stay <= 100.
+    """
     total = {"status": "completed", "total_orders": 0, "synced_count": 0,
              "failed_count": 0, "pages_fetched": 0}
     client = ShoplineClient(store.shop_handle, store.access_token)
