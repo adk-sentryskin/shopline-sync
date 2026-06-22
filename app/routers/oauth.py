@@ -10,6 +10,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -18,6 +19,7 @@ from app.middleware.auth import get_optional_merchant
 from app.models import ShoplineStore
 from app.schemas import OAuthStart
 from app.services import shopline_oauth
+from app.services.shopline_client import ShoplineClient
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/oauth", tags=["oauth"])
@@ -93,6 +95,40 @@ def _register_webhooks_bg(merchant_id: str) -> None:
         db.close()
 
 
+def _apply_shop_identity(db: Session, merchant_id: str, shop_info: dict) -> Optional[str]:
+    """Propagate SHOPLINE store identity into ``public.merchants``.
+
+    The agent-builder reads ``shop_name`` + ``shop_url`` from ``public.merchants``
+    to build an agent (mirrors the Shopify connect flow, which fetches the shop's
+    name + primary domain post-OAuth). This updates the existing merchant row in
+    place — COALESCE keeps current values when SHOPLINE omits a field, so we never
+    blank out data the merchant already provided.
+
+    Returns the resolved customer-facing shop URL (or None when no domain is known).
+    """
+    shop_name = (shop_info.get("name") or "").strip() or None
+
+    domain = (shop_info.get("domain") or "").strip()
+    shop_url = None
+    if domain:
+        shop_url = domain if domain.startswith(("http://", "https://")) else f"https://{domain}"
+
+    db.execute(
+        text(
+            """
+            UPDATE public.merchants
+               SET shop_name  = COALESCE(:name, shop_name),
+                   shop_url   = COALESCE(:url, shop_url),
+                   platform   = 'Shopline',
+                   updated_at = now()
+             WHERE merchant_id = :mid
+            """
+        ),
+        {"name": shop_name, "url": shop_url, "mid": merchant_id},
+    )
+    return shop_url
+
+
 @router.get("/callback")
 async def oauth_callback(
     background_tasks: BackgroundTasks,
@@ -127,11 +163,30 @@ async def oauth_callback(
         db.add(store)
 
     store.shop_handle = handle
-    store.site_url = f"https://{handle}.myshopline.com"
+    store.site_url = f"https://{handle}.myshopline.com"  # synthesized fallback; refined below
     store.access_token = tokens["access_token"]      # hybrid setter encrypts
     store.token_expires_at = tokens["token_expires_at"]
     store.scopes = tokens.get("scope")
     store.is_active = 1
+
+    # Fetch the store's real name + primary domain and propagate them into
+    # public.merchants so the agent-builder can create an agent (parity with the
+    # Shopify connect flow). Best-effort: a failure here must not break the connect.
+    try:
+        with ShoplineClient(handle, tokens["access_token"]) as client:
+            shop_info = client.get_shop_info()
+        shop_url = _apply_shop_identity(db, merchant_id, shop_info)
+        if shop_url:
+            store.site_url = shop_url
+        logger.info(
+            "SHOPLINE shop identity applied: merchant=%s name=%s url=%s",
+            merchant_id, shop_info.get("name"), shop_url,
+        )
+    except Exception as e:
+        logger.warning(
+            "SHOPLINE shop-info fetch failed for merchant=%s handle=%s: %s",
+            merchant_id, handle, e,
+        )
 
     db.commit()
     logger.info("SHOPLINE store connected: merchant=%s handle=%s", merchant_id, handle)

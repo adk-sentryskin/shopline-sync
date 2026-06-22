@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     WEBHOOK_VERIFY_STRICT: bool = False
     # Admin API version (path segment). v20260601 confirmed current (2026-06-11).
     SHOPLINE_API_VERSION: str = "v20260601"
-    SHOPLINE_SCOPES: str = "read_products,read_orders,read_content,read_page,read_shop_policy"
+    SHOPLINE_SCOPES: str = "read_products,read_orders,read_content,read_page,read_shop_policy,read_store_information"
 
     # Application
     APP_HOST: str = "0.0.0.0"

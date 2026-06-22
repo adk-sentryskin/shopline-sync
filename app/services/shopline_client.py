@@ -53,6 +53,16 @@ class ShoplineClient:
         """GET the product list. params may include limit / page / since_id etc."""
         return self.get("/products/products.json", params=params or None)
 
+    def get_shop_info(self) -> dict:
+        """GET store identity (name, primary domain, currency, id, email).
+
+        Endpoint: GET /merchants/shop.json  (requires read_store_information scope).
+        SHOPLINE wraps the payload in a top-level ``data`` object; return that
+        inner dict (falling back to the raw body if the wrapper is absent).
+        """
+        body = self.get("/merchants/shop.json")
+        return body.get("data", body) if isinstance(body, dict) else body
+
     def close(self) -> None:
         if self._owns_client:
             self._client.close()

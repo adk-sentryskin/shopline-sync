@@ -3,7 +3,8 @@ appName = "chekout ai"
 appKey = "981e968639f3b89bf856a71718340867802f7bdc"
 appUrl = "https://app.chekout.ai"
 appCallbackUrlList = [
-  "https://shopline-sync-393304610205.us-central1.run.app/api/oauth/callback"
+  "https://shopline-sync-393304610205.us-central1.run.app/api/oauth/callback",
+  "https://shopline-sync-579388332064.us-central1.run.app/api/oauth/callback"
 ]
 isNewWindow = true
 subPathPrefix = "apps"
