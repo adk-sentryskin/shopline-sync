@@ -12,9 +12,12 @@ import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.database import get_db
+from app.services import gdpr
 from app.services.webhook_processor import process_webhook
 from app.utils.webhook_verification import verify_webhook, extract_webhook_topic
 
@@ -71,13 +74,63 @@ async def receive_shopline_webhook(request: Request, background_tasks: Backgroun
 
 
 # --- GDPR mandatory compliance webhooks (required to publish the app) ---
+async def _read_verified_compliance(request: Request):
+    """Read + HMAC-verify a compliance webhook. Returns (handle, payload) or None
+    when verification fails under strict mode. Always safe to ACK 200."""
+    raw = await request.body()
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    valid = verify_webhook(raw, headers.get("x-shopline-hmac-sha256"))
+    if settings.WEBHOOK_VERIFY_STRICT and not valid:
+        logger.warning("Rejected compliance webhook (invalid HMAC)")
+        return None
+    try:
+        payload = json.loads(raw) if raw else {}
+    except json.JSONDecodeError:
+        payload = {}
+    return _extract_handle(headers, payload), payload
+
+
+@router.post("/customers/data_request")
+async def gdpr_customer_data_request(request: Request, db: Session = Depends(get_db)):
+    """GDPR: merchant requests a customer's stored data. ACK 200."""
+    verified = await _read_verified_compliance(request)
+    if verified is not None:
+        handle, payload = verified
+        gdpr.process_data_request(db, handle, payload)
+    return {"status": "ok"}
+
+
 @router.post("/customers/redact")
-async def gdpr_customer_redact():
-    """GDPR: customer data deletion. ACK 200 (processing TODO)."""
+async def gdpr_customer_redact(request: Request, db: Session = Depends(get_db)):
+    """GDPR: delete a customer's personal data (order rows carrying PII). ACK 200."""
+    verified = await _read_verified_compliance(request)
+    if verified is not None:
+        handle, payload = verified
+        order_ids = payload.get("orders_to_redact") or payload.get("orders") or []
+        gdpr.redact_customer(db, handle, order_ids)
+    return {"status": "ok"}
+
+
+@router.post("/merchants/redact")
+async def gdpr_merchants_redact(request: Request, db: Session = Depends(get_db)):
+    """SHOPLINE app-uninstall + store data deletion.
+
+    SHOPLINE has no immediate ``app/uninstalled`` topic — it sends ``merchants/redact``
+    ~48h after uninstall (with store_id/store_domain). This is the canonical uninstall
+    signal: delete all of the store's data + deactivate + clear tokens. ACK 200.
+    """
+    verified = await _read_verified_compliance(request)
+    if verified is not None:
+        handle, _payload = verified
+        gdpr.redact_shop(db, handle)
     return {"status": "ok"}
 
 
 @router.post("/shop/redact")
-async def gdpr_shop_redact():
-    """GDPR: store data deletion. ACK 200 (processing TODO)."""
+async def gdpr_shop_redact(request: Request, db: Session = Depends(get_db)):
+    """Alias of ``merchants/redact`` (Shopify topic name) — kept for compatibility. ACK 200."""
+    verified = await _read_verified_compliance(request)
+    if verified is not None:
+        handle, _payload = verified
+        gdpr.redact_shop(db, handle)
     return {"status": "ok"}

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.models import ShoplineStore
 from app.services.shopline_client import ShoplineClient
+from app.services.shopline_oauth import ensure_fresh_token
 from app.services.document_sync import sync_documents, strip_html
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ def full_sync(db: Session, store: ShoplineStore) -> Dict:
     """List blogs -> list each blog's articles -> embed + upsert as documents."""
     total = {"status": "completed", "blogs": 0, "articles": 0,
              "synced_count": 0, "failed_count": 0}
-    client = ShoplineClient(store.shop_handle, store.access_token)
+    client = ShoplineClient(store.shop_handle, ensure_fresh_token(db, store))
     try:
         blogs_resp = client.get("/store/blogs.json")
         blogs = blogs_resp.get("blogs") or []

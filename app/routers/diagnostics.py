@@ -9,10 +9,13 @@ import logging
 
 import httpx
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
 
+from app.database import get_db
 from app.middleware.auth import get_merchant_from_header
 from app.models import ShoplineStore
 from app.services.shopline_client import ShoplineClient
+from app.services.shopline_oauth import ensure_fresh_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
@@ -35,10 +38,11 @@ async def post_probe(
     payload: dict,
     path: str = Query(..., description="Admin API path, e.g. /webhooks.json"),
     store: ShoplineStore = Depends(get_merchant_from_header),
+    db: Session = Depends(get_db),
 ):
     """POST an arbitrary body to a SHOPLINE Admin API path; return status + body
     (so we can discover the right request shape). Diagnostic — remove later."""
-    client = ShoplineClient(store.shop_handle, store.access_token)
+    client = ShoplineClient(store.shop_handle, ensure_fresh_token(db, store))
     try:
         resp = client.post(path, payload)
         return {"path": path, "ok": True, "response": json.dumps(resp)[:1000]}
@@ -54,8 +58,9 @@ async def post_probe(
 async def probe(
     path: str = Query(..., description="Admin API path relative to /admin/openapi/{version}, e.g. /pages.json"),
     store: ShoplineStore = Depends(get_merchant_from_header),
+    db: Session = Depends(get_db),
 ):
-    client = ShoplineClient(store.shop_handle, store.access_token)
+    client = ShoplineClient(store.shop_handle, ensure_fresh_token(db, store))
     try:
         raw = client.get(path)
         return {

@@ -10,7 +10,6 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -18,7 +17,7 @@ from app.database import get_db
 from app.middleware.auth import get_optional_merchant
 from app.models import ShoplineStore
 from app.schemas import OAuthStart
-from app.services import shopline_oauth
+from app.services import shop_identity, shopline_oauth
 from app.services.shopline_client import ShoplineClient
 
 logger = logging.getLogger(__name__)
@@ -95,38 +94,26 @@ def _register_webhooks_bg(merchant_id: str) -> None:
         db.close()
 
 
-def _apply_shop_identity(db: Session, merchant_id: str, shop_info: dict) -> Optional[str]:
-    """Propagate SHOPLINE store identity into ``public.merchants``.
+def _initial_product_sync_bg(merchant_id: str) -> None:
+    """Best-effort initial product backfill after connect (own DB session, detached).
 
-    The agent-builder reads ``shop_name`` + ``shop_url`` from ``public.merchants``
-    to build an agent (mirrors the Shopify connect flow, which fetches the shop's
-    name + primary domain post-OAuth). This updates the existing merchant row in
-    place — COALESCE keeps current values when SHOPLINE omits a field, so we never
-    blank out data the merchant already provided.
-
-    Returns the resolved customer-facing shop URL (or None when no domain is known).
+    SHOPLINE connect historically registered webhooks only — unlike the Shopify flow,
+    which runs an initial sync — so a store's *existing* catalog never imported (webhooks
+    only deliver future changes). Pull the catalog once here; webhooks keep it fresh after.
+    Failures are logged, not raised — a sync hiccup must never break the connect.
     """
-    shop_name = (shop_info.get("name") or "").strip() or None
-
-    domain = (shop_info.get("domain") or "").strip()
-    shop_url = None
-    if domain:
-        shop_url = domain if domain.startswith(("http://", "https://")) else f"https://{domain}"
-
-    db.execute(
-        text(
-            """
-            UPDATE public.merchants
-               SET shop_name  = COALESCE(:name, shop_name),
-                   shop_url   = COALESCE(:url, shop_url),
-                   platform   = 'Shopline',
-                   updated_at = now()
-             WHERE merchant_id = :mid
-            """
-        ),
-        {"name": shop_name, "url": shop_url, "mid": merchant_id},
-    )
-    return shop_url
+    from app.database import SessionLocal
+    from app.services.product_sync import full_sync
+    db = SessionLocal()
+    try:
+        store = db.query(ShoplineStore).filter(ShoplineStore.merchant_id == merchant_id).first()
+        if store and store.access_token:
+            result = full_sync(db, store)
+            logger.info("SHOPLINE initial product sync for %s: %s", merchant_id, result)
+    except Exception as e:
+        logger.warning("Initial product sync after connect failed for %s: %s", merchant_id, e)
+    finally:
+        db.close()
 
 
 @router.get("/callback")
@@ -172,26 +159,15 @@ async def oauth_callback(
     # Fetch the store's real name + primary domain and propagate them into
     # public.merchants so the agent-builder can create an agent (parity with the
     # Shopify connect flow). Best-effort: a failure here must not break the connect.
-    try:
-        with ShoplineClient(handle, tokens["access_token"]) as client:
-            shop_info = client.get_shop_info()
-        shop_url = _apply_shop_identity(db, merchant_id, shop_info)
-        if shop_url:
-            store.site_url = shop_url
-        logger.info(
-            "SHOPLINE shop identity applied: merchant=%s name=%s url=%s",
-            merchant_id, shop_info.get("name"), shop_url,
-        )
-    except Exception as e:
-        logger.warning(
-            "SHOPLINE shop-info fetch failed for merchant=%s handle=%s: %s",
-            merchant_id, handle, e,
-        )
+    with ShoplineClient(handle, tokens["access_token"]) as client:
+        shop_identity.backfill_from_client(db, store, client)
 
     db.commit()
     logger.info("SHOPLINE store connected: merchant=%s handle=%s", merchant_id, handle)
 
-    # Register webhooks in the background so the redirect isn't delayed.
+    # Register webhooks + backfill the existing catalog in the background so the
+    # redirect isn't delayed (full_sync pulls + embeds, which can take seconds).
     background_tasks.add_task(_register_webhooks_bg, merchant_id)
+    background_tasks.add_task(_initial_product_sync_bg, merchant_id)
 
     return _callback_finish(True, 200, status="connected", merchant_id=merchant_id, shop_handle=handle)

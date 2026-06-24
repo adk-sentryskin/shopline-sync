@@ -23,10 +23,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import quote, urlencode
 
+import logging
+
 import httpx
 
 from app.config import settings
 from app.utils.signature import signed_headers
+
+logger = logging.getLogger(__name__)
 
 # Refresh this many seconds before the real expiry to avoid edge-of-expiry races.
 TOKEN_REFRESH_SAFETY_SECONDS = 600  # 10 minutes
@@ -158,7 +162,8 @@ def refresh_access_token(handle: str, client: Optional[httpx.Client] = None) -> 
     """
     Refresh the access token for a store (app-credential-signed; no refresh_token).
 
-    ⚠️ Exact request body unconfirmed — sending empty body. Verify at E2E.
+    Endpoint: POST /admin/oauth/token/refresh, auth via appkey/timestamp/sign
+    headers (empty body). Response: accessToken, expireTime, scope.
     """
     url = f"{_store_base_url(handle)}/admin/oauth/token/refresh"
     data = _post_signed(url, {}, client=client)
@@ -167,3 +172,25 @@ def refresh_access_token(handle: str, client: Optional[httpx.Client] = None) -> 
         "token_expires_at": _parse_expiry(data.get("expireTime")),
         "scope": data.get("scope"),
     }
+
+
+def ensure_fresh_token(db, store) -> str:
+    """Return a valid access token for ``store``, refreshing in-place if needed.
+
+    SHOPLINE tokens live ~10h with no refresh_token, so we lazily refresh just
+    before use. ``token_expires_at`` already carries a safety margin (see
+    ``_parse_expiry``), so a simple ``expiry > now`` check refreshes early.
+    Refresh is rate-limited by SHOPLINE — only call it when actually expired.
+    """
+    now = datetime.now(timezone.utc)
+    if store.token_expires_at is not None and store.token_expires_at > now:
+        return store.access_token
+
+    logger.info("SHOPLINE token expired/near-expiry for %s — refreshing", store.shop_handle)
+    data = refresh_access_token(store.shop_handle)
+    store.access_token = data["access_token"]          # hybrid setter re-encrypts
+    store.token_expires_at = data["token_expires_at"]
+    if data.get("scope"):
+        store.scopes = data["scope"]
+    db.commit()
+    return store.access_token

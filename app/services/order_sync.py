@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models import ShoplineOrder, ShoplineStore
 from app.services.shopline_client import ShoplineClient
+from app.services.shopline_oauth import ensure_fresh_token
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ def full_sync(db: Session, store: ShoplineStore, page_limit: int = 100, max_page
     """
     total = {"status": "completed", "total_orders": 0, "synced_count": 0,
              "failed_count": 0, "pages_fetched": 0}
-    client = ShoplineClient(store.shop_handle, store.access_token)
+    client = ShoplineClient(store.shop_handle, ensure_fresh_token(db, store))
     try:
         page = 1
         while page <= max_pages:

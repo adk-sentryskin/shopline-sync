@@ -65,8 +65,10 @@ PUBLIC_PATHS = {
 # Webhook paths authenticate via HMAC, not the API key.
 WEBHOOK_PATHS = {
     "/api/webhooks/shopline",
-    "/api/webhooks/customers/redact",  # GDPR mandatory
-    "/api/webhooks/shop/redact",       # GDPR mandatory
+    "/api/webhooks/customers/data_request",  # GDPR mandatory
+    "/api/webhooks/customers/redact",        # GDPR mandatory
+    "/api/webhooks/merchants/redact",        # SHOPLINE uninstall + store redact (mandatory)
+    "/api/webhooks/shop/redact",             # alias of merchants/redact (compat)
 }
 
 

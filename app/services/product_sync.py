@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import ShoplineProduct, ShoplineStore
 from app.services.shopline_client import ShoplineClient
+from app.services.shopline_oauth import ensure_fresh_token
 
 logger = logging.getLogger(__name__)
 
@@ -133,8 +134,13 @@ def full_sync(db: Session, store: ShoplineStore, page_limit: int = 200, max_page
     total = {"status": "completed", "total_products": 0, "synced_count": 0,
              "created_count": 0, "updated_count": 0, "failed_count": 0, "pages_fetched": 0}
 
-    client = ShoplineClient(store.shop_handle, store.access_token)
+    client = ShoplineClient(store.shop_handle, ensure_fresh_token(db, store))
     try:
+        # Self-heal store identity (name + primary domain → public.merchants) so
+        # already-connected stores get backfilled without a reconnect. Best-effort.
+        from app.services import shop_identity
+        shop_identity.backfill_from_client(db, store, client)
+
         page = 1
         while page <= max_pages:
             raw = client.list_products(limit=page_limit, page=page)

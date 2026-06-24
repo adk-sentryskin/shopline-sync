@@ -13,6 +13,7 @@ from app.database import get_db
 from app.middleware.auth import get_merchant_from_header
 from app.models import ShoplineStore
 from app.services.shopline_client import ShoplineClient
+from app.services.shopline_oauth import ensure_fresh_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/sync", tags=["sync"])
@@ -24,9 +25,12 @@ async def sync_info():
 
 
 @router.get("/products/preview")
-async def preview_products(store: ShoplineStore = Depends(get_merchant_from_header)):
+async def preview_products(
+    store: ShoplineStore = Depends(get_merchant_from_header),
+    db: Session = Depends(get_db),
+):
     """Live read-only fetch of products from SHOPLINE (verifies token + endpoint)."""
-    client = ShoplineClient(store.shop_handle, store.access_token)
+    client = ShoplineClient(store.shop_handle, ensure_fresh_token(db, store))
     try:
         raw = client.list_products(limit=5)
     except Exception as e:
@@ -62,9 +66,12 @@ async def sync_products(
 
 
 @router.get("/orders/preview")
-async def preview_orders(store: ShoplineStore = Depends(get_merchant_from_header)):
+async def preview_orders(
+    store: ShoplineStore = Depends(get_merchant_from_header),
+    db: Session = Depends(get_db),
+):
     """Live read-only fetch of orders (verifies scope + endpoint + response shape)."""
-    client = ShoplineClient(store.shop_handle, store.access_token)
+    client = ShoplineClient(store.shop_handle, ensure_fresh_token(db, store))
     try:
         raw = client.get("/orders.json", params={"limit": 5})
     except Exception as e:

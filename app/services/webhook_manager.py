@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import ShoplineStore, ShoplineWebhook
 from app.services.shopline_client import ShoplineClient
+from app.services.shopline_oauth import ensure_fresh_token
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ def register_webhooks(db: Session, store: ShoplineStore) -> Dict:
     """Subscribe the store to WEBHOOK_TOPICS (idempotent) and persist them."""
     address = _callback_address()
     result = {"registered": [], "adopted": [], "failed": [], "address": address}
-    client = ShoplineClient(store.shop_handle, store.access_token)
+    client = ShoplineClient(store.shop_handle, ensure_fresh_token(db, store))
     try:
         existing = _list_existing(client)
         by_topic = {w.get("topic"): w for w in existing if w.get("address") == address}
